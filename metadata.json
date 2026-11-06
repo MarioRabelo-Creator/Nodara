@@ -1,0 +1,8 @@
+{
+  "name": "SynapseDocs - Produtividade, Notas & Documentos",
+  "description": "Plataforma unificada de produtividade combinando a edição de documentos estilo Word, notas hierárquicas e conexões estilo Obsidian, e sincronização com Google Drive.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
