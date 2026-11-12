@@ -29,11 +29,17 @@ import {
   Link2,
   Printer,
   ChevronRight,
-  Maximize2
+  Maximize2,
+  MessageSquare,
+  Highlighter
 } from 'lucide-react';
 import { marked } from 'marked';
 import { exportNoteToMarkdown } from '../../utils/exportUtils';
 import { extractTags, findBacklinks } from '../../utils/linkUtils';
+import { useCollaboration } from '../../utils/collabClient';
+import { CollaboratorBar } from '../collab/CollaboratorBar';
+import { CommentsDrawer } from '../comments/CommentsDrawer';
+import { SelectionToolbar } from '../comments/SelectionToolbar';
 
 interface ObsidianNoteEditorProps {
   note: Note;
@@ -57,6 +63,32 @@ export const ObsidianNoteEditor: React.FC<ObsidianNoteEditorProps> = ({
 
   // Independent preview modal per Section 3 (never open side-by-side)
   const [showPreviewModal, setShowPreviewModal] = useState<boolean>(false);
+  const [showCommentsDrawer, setShowCommentsDrawer] = useState<boolean>(false);
+
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Multi-user collaboration & real-time presence
+  const {
+    isConnected,
+    collaborators,
+    activePersona,
+    switchPersona,
+    comments,
+    highlights,
+    activeNodeFocus,
+    addComment,
+    addReply,
+    toggleResolveComment,
+    deleteComment,
+    addHighlight,
+    deleteHighlight,
+    setFocusedNode,
+    broadcastDocUpdate,
+  } = useCollaboration(note.id, (remoteItem) => {
+    if (remoteItem && remoteItem.id === note.id) {
+      onUpdate(remoteItem);
+    }
+  });
 
   // [[Wikilink]] suggestion
   const [showLinkSuggest, setShowLinkSuggest] = useState<boolean>(false);
@@ -250,8 +282,38 @@ export const ObsidianNoteEditor: React.FC<ObsidianNoteEditorProps> = ({
           </button>
         </div>
 
-        {/* Secondary controls */}
+        {/* Secondary & Collaboration controls */}
         <div className="flex items-center gap-2">
+          {/* Real-Time Collaborator Bar */}
+          <CollaboratorBar
+            collaborators={collaborators}
+            activePersona={activePersona}
+            isConnected={isConnected}
+            onSwitchPersona={switchPersona}
+            documentTitle={note.title}
+          />
+
+          <div className="h-4 w-px bg-stone-200 dark:bg-stone-700 mx-0.5" />
+
+          {/* Comments & Highlights Drawer Trigger */}
+          <button
+            onClick={() => setShowCommentsDrawer(!showCommentsDrawer)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+              showCommentsDrawer || comments.filter(c => !c.resolved).length > 0
+                ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-800 text-blue-700 dark:text-blue-300'
+                : 'bg-white dark:bg-stone-800 border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 hover:bg-stone-50'
+            }`}
+            title="Comentários e marcações da nota"
+          >
+            <MessageSquare className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+            <span className="hidden sm:inline">Comentários</span>
+            {comments.filter(c => !c.resolved).length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-blue-600 text-white text-[10px] font-bold">
+                {comments.filter(c => !c.resolved).length}
+              </span>
+            )}
+          </button>
+
           {/* Independent Preview Command (Modal per Section 3) */}
           <button
             onClick={() => setShowPreviewModal(true)}
@@ -289,7 +351,7 @@ export const ObsidianNoteEditor: React.FC<ObsidianNoteEditorProps> = ({
       </div>
 
       {/* SINGLE EDITING CANVAS (Occupies maximum available space) */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div ref={containerRef} className="flex-1 flex overflow-hidden relative">
         <div className="flex-1 flex flex-col h-full bg-white dark:bg-stone-950 overflow-y-auto">
           <div className="max-w-4xl w-full mx-auto p-6 md:p-12 flex flex-col flex-1">
             {/* Note Title Input */}
@@ -444,6 +506,30 @@ export const ObsidianNoteEditor: React.FC<ObsidianNoteEditorProps> = ({
           </div>
         </div>
       )}
+
+      {/* Floating text selection toolbar for note annotations and comments */}
+      <SelectionToolbar
+        containerRef={containerRef}
+        onAddHighlight={(text, color) => addHighlight(undefined, text, color)}
+        onAddComment={(selectedText, content) => {
+          addComment(undefined, selectedText, content);
+          setShowCommentsDrawer(true);
+        }}
+      />
+
+      {/* Multi-user Comments & Highlights Drawer */}
+      <CommentsDrawer
+        isOpen={showCommentsDrawer}
+        onClose={() => setShowCommentsDrawer(false)}
+        comments={comments}
+        highlights={highlights}
+        activePersona={activePersona}
+        onAddComment={addComment}
+        onAddReply={addReply}
+        onToggleResolve={toggleResolveComment}
+        onDeleteComment={deleteComment}
+        onDeleteHighlight={deleteHighlight}
+      />
     </div>
   );
 };

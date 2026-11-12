@@ -64,9 +64,14 @@ import {
   Baseline,
   Highlighter,
   SlidersHorizontal,
-  X
+  X,
+  MessageSquare
 } from 'lucide-react';
 import { exportDocumentToWordDoc, exportDocumentToJSON, triggerPrintDialog } from '../../utils/exportUtils';
+import { useCollaboration } from '../../utils/collabClient';
+import { CollaboratorBar } from '../collab/CollaboratorBar';
+import { CommentsDrawer } from '../comments/CommentsDrawer';
+import { SelectionToolbar } from '../comments/SelectionToolbar';
 
 interface WordDocumentEditorProps {
   document: TraditionalDocument;
@@ -132,6 +137,32 @@ export const WordDocumentEditor: React.FC<WordDocumentEditorProps> = ({
   const [showAstInspector, setShowAstInspector] = useState<boolean>(false);
   const [showColorPicker, setShowColorPicker] = useState<boolean>(false);
   const [showHighlightPicker, setShowHighlightPicker] = useState<boolean>(false);
+  const [showCommentsDrawer, setShowCommentsDrawer] = useState<boolean>(false);
+
+  // Collaboration and Real-time Presence
+  const {
+    isConnected,
+    collaborators,
+    activePersona,
+    switchPersona,
+    comments,
+    highlights,
+    activeNodeFocus,
+    addComment,
+    addReply,
+    toggleResolveComment,
+    deleteComment,
+    addHighlight,
+    deleteHighlight,
+    setFocusedNode,
+    broadcastDocUpdate,
+  } = useCollaboration(doc.id, (remoteItem) => {
+    if (remoteItem && remoteItem.id === doc.id) {
+      onUpdate(remoteItem);
+    }
+  });
+
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   const { ast } = doc;
   const { pageConfig } = ast;
@@ -514,8 +545,38 @@ export const WordDocumentEditor: React.FC<WordDocumentEditorProps> = ({
             Layout da Página
           </button>
 
-          {/* Quick Right Actions (Export, Print, AST) */}
-          <div className="ml-auto flex items-center gap-1.5 pb-1">
+          {/* Quick Right Actions (Collaborators, Comments, Export, Print, AST) */}
+          <div className="ml-auto flex items-center gap-2 pb-1">
+            {/* Real-Time Collaborator Bar */}
+            <CollaboratorBar
+              collaborators={collaborators}
+              activePersona={activePersona}
+              isConnected={isConnected}
+              onSwitchPersona={switchPersona}
+              documentTitle={doc.title}
+            />
+
+            <div className="h-4 w-px bg-stone-300 dark:bg-stone-700" />
+
+            {/* Comments & Highlights Drawer Trigger */}
+            <button
+              onClick={() => setShowCommentsDrawer(!showCommentsDrawer)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                showCommentsDrawer || comments.filter(c => !c.resolved).length > 0
+                  ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-800 text-blue-700 dark:text-blue-300'
+                  : 'bg-white dark:bg-stone-800 border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 hover:bg-stone-100'
+              }`}
+              title="Abrir painel de Comentários e Marcações"
+            >
+              <MessageSquare className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span className="hidden sm:inline">Comentários</span>
+              {comments.filter(c => !c.resolved).length > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-blue-600 text-white text-[10px] font-bold">
+                  {comments.filter(c => !c.resolved).length}
+                </span>
+              )}
+            </button>
+
             <button
               onClick={() => exportDocumentToWordDoc(doc)}
               className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium shadow-sm transition-colors"
@@ -904,7 +965,7 @@ export const WordDocumentEditor: React.FC<WordDocumentEditorProps> = ({
       {/* =========================================================================
           ÁREA ÚNICA DE EDIÇÃO DO DOCUMENTO (Section 3 - Single Writing Canvas)
          ========================================================================= */}
-      <div className="flex-1 overflow-y-auto p-6 md:p-8 flex justify-center items-start">
+      <div ref={containerRef} className="flex-1 overflow-y-auto p-6 md:p-8 flex justify-center items-start relative">
         <div className="flex flex-col items-center gap-8 max-w-full">
           {pages.map((pageNodes, pageIndex) => {
             const pageNumber = pageIndex + 1;
@@ -1020,14 +1081,59 @@ export const WordDocumentEditor: React.FC<WordDocumentEditorProps> = ({
                           6: 'text-xs text-stone-500',
                         };
 
+                        const nodeComments = comments.filter(c => c.targetNodeId === node.id);
+                        const openCommentsCount = nodeComments.filter(c => !c.resolved).length;
+                        const remoteCollab = activeNodeFocus[node.id];
+                        const nodeHighlight = highlights.find(h => h.targetNodeId === node.id);
+
                         return (
                           <div
                             key={node.id}
-                            onClick={() => setSelectedNodeId(node.id)}
+                            onClick={() => {
+                              setSelectedNodeId(node.id);
+                              setFocusedNode(node.id);
+                            }}
+                            style={{
+                              borderLeft: remoteCollab ? `3px solid ${remoteCollab.color}` : undefined,
+                              backgroundColor: nodeHighlight ? `${nodeHighlight.color}35` : undefined,
+                            }}
                             className={`group relative p-1 rounded-md transition-colors ${
-                              isSelected ? 'ring-1 ring-blue-500 bg-blue-50/20' : 'hover:bg-stone-50/60 dark:hover:bg-stone-900/40'
+                              isSelected
+                                ? 'ring-1 ring-blue-500 bg-blue-50/20'
+                                : 'hover:bg-stone-50/60 dark:hover:bg-stone-900/40'
                             }`}
                           >
+                            {/* Remote collaborator active focus badge */}
+                            {remoteCollab && (
+                              <div
+                                className="no-print absolute -top-3 right-3 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] text-white font-medium shadow-md z-20 pointer-events-none"
+                                style={{ backgroundColor: remoteCollab.color }}
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                                <span>{remoteCollab.name} editando</span>
+                              </div>
+                            )}
+
+                            {/* Margin comment badge */}
+                            {nodeComments.length > 0 && (
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setSelectedNodeId(node.id);
+                                  setShowCommentsDrawer(true);
+                                }}
+                                className={`no-print absolute -right-9 top-2 p-1.5 rounded-lg border shadow-xs flex items-center gap-1 text-[11px] font-semibold transition-all hover:scale-105 z-10 ${
+                                  openCommentsCount > 0
+                                    ? 'bg-blue-600 text-white border-blue-700'
+                                    : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 border-stone-200 dark:border-stone-700'
+                                }`}
+                                title={`${nodeComments.length} comentário(s) neste bloco. Clique para abrir.`}
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                                <span>{openCommentsCount || nodeComments.length}</span>
+                              </button>
+                            )}
+
                             <input
                               type="text"
                               value={node.text}
@@ -1041,32 +1147,88 @@ export const WordDocumentEditor: React.FC<WordDocumentEditorProps> = ({
                               className={`w-full bg-transparent focus:outline-none ${levelStyles[node.level]}`}
                               placeholder={`Título ${node.level}...`}
                             />
-                            <button
-                              onClick={e => {
-                                e.stopPropagation();
-                                deleteNode(node.id);
-                              }}
-                              className="no-print absolute right-2 top-2 opacity-0 group-hover:opacity-100 p-1 text-stone-400 hover:text-red-500 rounded transition-opacity"
-                              title="Excluir Bloco"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+
+                            <div className="no-print absolute right-2 top-2 opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setSelectedNodeId(node.id);
+                                  setShowCommentsDrawer(true);
+                                }}
+                                className="p-1 text-stone-400 hover:text-blue-600 rounded"
+                                title="Comentar neste bloco"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  deleteNode(node.id);
+                                }}
+                                className="p-1 text-stone-400 hover:text-red-500 rounded"
+                                title="Excluir Bloco"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
                         );
                       }
 
                       case 'paragraph': {
                         const indentPx = (node.indent || 0) * 36;
+                        const nodeComments = comments.filter(c => c.targetNodeId === node.id);
+                        const openCommentsCount = nodeComments.filter(c => !c.resolved).length;
+                        const remoteCollab = activeNodeFocus[node.id];
+                        const nodeHighlight = highlights.find(h => h.targetNodeId === node.id);
 
                         return (
                           <div
                             key={node.id}
-                            onClick={() => setSelectedNodeId(node.id)}
-                            style={{ paddingLeft: `${indentPx}px` }}
+                            onClick={() => {
+                              setSelectedNodeId(node.id);
+                              setFocusedNode(node.id);
+                            }}
+                            style={{
+                              paddingLeft: `${indentPx}px`,
+                              borderLeft: remoteCollab ? `3px solid ${remoteCollab.color}` : undefined,
+                              backgroundColor: nodeHighlight ? `${nodeHighlight.color}35` : undefined,
+                            }}
                             className={`group relative p-1 rounded-md transition-colors ${
                               isSelected ? 'ring-1 ring-blue-500 bg-blue-50/20' : 'hover:bg-stone-50/60 dark:hover:bg-stone-900/40'
                             }`}
                           >
+                            {/* Remote collaborator active focus badge */}
+                            {remoteCollab && (
+                              <div
+                                className="no-print absolute -top-3 right-3 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] text-white font-medium shadow-md z-20 pointer-events-none"
+                                style={{ backgroundColor: remoteCollab.color }}
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                                <span>{remoteCollab.name} editando</span>
+                              </div>
+                            )}
+
+                            {/* Margin comment badge */}
+                            {nodeComments.length > 0 && (
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setSelectedNodeId(node.id);
+                                  setShowCommentsDrawer(true);
+                                }}
+                                className={`no-print absolute -right-9 top-2 p-1.5 rounded-lg border shadow-xs flex items-center gap-1 text-[11px] font-semibold transition-all hover:scale-105 z-10 ${
+                                  openCommentsCount > 0
+                                    ? 'bg-blue-600 text-white border-blue-700'
+                                    : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 border-stone-200 dark:border-stone-700'
+                                }`}
+                                title={`${nodeComments.length} comentário(s) neste parágrafo. Clique para abrir.`}
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                                <span>{openCommentsCount || nodeComments.length}</span>
+                              </button>
+                            )}
+
                             <div className="flex items-start gap-2">
                               {node.listType === 'bullet' && (
                                 <span className="text-stone-400 mt-1">•</span>
@@ -1101,16 +1263,29 @@ export const WordDocumentEditor: React.FC<WordDocumentEditorProps> = ({
                               </div>
                             )}
 
-                            <button
-                              onClick={e => {
-                                e.stopPropagation();
-                                deleteNode(node.id);
-                              }}
-                              className="no-print absolute right-2 top-2 opacity-0 group-hover:opacity-100 p-1 text-stone-400 hover:text-red-500 rounded transition-opacity"
-                              title="Excluir Bloco"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="no-print absolute right-2 top-2 opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setSelectedNodeId(node.id);
+                                  setShowCommentsDrawer(true);
+                                }}
+                                className="p-1 text-stone-400 hover:text-blue-600 rounded"
+                                title="Comentar neste bloco"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  deleteNode(node.id);
+                                }}
+                                className="p-1 text-stone-400 hover:text-red-500 rounded"
+                                title="Excluir Bloco"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
                         );
                       }
@@ -1455,6 +1630,35 @@ export const WordDocumentEditor: React.FC<WordDocumentEditorProps> = ({
           <pre className="text-emerald-400 whitespace-pre-wrap">{JSON.stringify(ast, null, 2)}</pre>
         </div>
       )}
+
+      {/* Floating Text Selection Toolbar for instant highlight & commenting */}
+      <SelectionToolbar
+        containerRef={containerRef}
+        onAddHighlight={(text, color) => addHighlight(selectedNodeId || undefined, text, color)}
+        onAddComment={(selectedText, content) => {
+          addComment(selectedNodeId || undefined, selectedText, content);
+          setShowCommentsDrawer(true);
+        }}
+      />
+
+      {/* Multi-user Comments & Highlights Drawer */}
+      <CommentsDrawer
+        isOpen={showCommentsDrawer}
+        onClose={() => setShowCommentsDrawer(false)}
+        comments={comments}
+        highlights={highlights}
+        activePersona={activePersona}
+        activeNodeId={selectedNodeId}
+        onAddComment={addComment}
+        onAddReply={addReply}
+        onToggleResolve={toggleResolveComment}
+        onDeleteComment={deleteComment}
+        onDeleteHighlight={deleteHighlight}
+        onSelectNode={nodeId => {
+          setSelectedNodeId(nodeId);
+          setFocusedNode(nodeId);
+        }}
+      />
     </div>
   );
 };

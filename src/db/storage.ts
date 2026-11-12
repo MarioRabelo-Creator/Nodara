@@ -16,7 +16,11 @@ import {
   SyncQueueItem,
   CloudAccount,
   ActivityLog,
-  EditorTab
+  EditorTab,
+  Collaborator,
+  DocumentComment,
+  DocumentHighlight,
+  CommentReply
 } from '../types';
 
 const STORAGE_KEYS = {
@@ -36,6 +40,10 @@ const STORAGE_KEYS = {
   TABS: 'nodara_tabs',
   ACTIVE_TAB_ID: 'nodara_active_tab_id',
   IS_OFFLINE_FORCED: 'nodara_is_offline_forced',
+  COMMENTS: 'nodara_comments',
+  HIGHLIGHTS: 'nodara_highlights',
+  COLLABORATORS: 'nodara_collaborators',
+  ACTIVE_COLLABORATOR_ID: 'nodara_active_collaborator_id',
 };
 
 // Seed initial profile
@@ -407,6 +415,127 @@ const INITIAL_ACTIVITIES: ActivityLog[] = [
   },
 ];
 
+const INITIAL_COLLABORATORS: Collaborator[] = [
+  {
+    id: 'collab_eduardo',
+    name: 'Eduardo M.',
+    email: 'ma138902@gmail.com',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    color: '#4f46e5', // Indigo
+    role: 'owner',
+    isCurrentUser: true,
+    lastActive: Date.now(),
+  },
+  {
+    id: 'collab_beatriz',
+    name: 'Dra. Beatriz Lima',
+    email: 'beatriz.lima@pesquisa.org',
+    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
+    color: '#059669', // Emerald
+    role: 'editor',
+    lastActive: Date.now() - 1000 * 60 * 3,
+  },
+  {
+    id: 'collab_carlos',
+    name: 'Carlos Mendes',
+    email: 'carlos.mendes@nodara.io',
+    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+    color: '#d97706', // Amber
+    role: 'commenter',
+    lastActive: Date.now() - 1000 * 60 * 12,
+  },
+  {
+    id: 'collab_lucas',
+    name: 'Lucas Ramos',
+    email: 'lucas.ramos@design.com',
+    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
+    color: '#e11d48', // Rose
+    role: 'editor',
+    lastActive: Date.now() - 1000 * 60 * 30,
+  },
+];
+
+const INITIAL_COMMENTS: DocumentComment[] = [
+  {
+    id: 'comm_1',
+    documentId: 'doc_spec_tecnica',
+    targetNodeId: 'node_tbl_1',
+    selectedText: 'Tabela 1.1 — Comparativo de Capacidades Arquiteturais',
+    author: {
+      id: 'collab_beatriz',
+      name: 'Dra. Beatriz Lima',
+      email: 'beatriz.lima@pesquisa.org',
+      avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
+      color: '#059669',
+    },
+    content: 'Excelente inclusão da matriz comparativa. Recomendo destacarmos a exportação nativa para Word (.doc) e PDF nas diretrizes finais.',
+    createdAt: '2026-11-04T05:10:00.000Z',
+    resolved: false,
+    replies: [
+      {
+        id: 'rep_1',
+        author: {
+          id: 'collab_eduardo',
+          name: 'Eduardo M.',
+          email: 'ma138902@gmail.com',
+          avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+          color: '#4f46e5',
+        },
+        content: 'Perfeito, Beatriz! Já integrei os exportadores DOCX e PDF diretamente na barra superior.',
+        createdAt: '2026-11-04T05:25:00.000Z',
+      },
+    ],
+  },
+  {
+    id: 'comm_2',
+    documentId: 'doc_spec_tecnica',
+    targetNodeId: 'node_p_2',
+    selectedText: 'modelo Zero-Trust Local-First',
+    author: {
+      id: 'collab_carlos',
+      name: 'Carlos Mendes',
+      email: 'carlos.mendes@nodara.io',
+      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+      color: '#d97706',
+    },
+    content: 'A conformidade com o padrão Zero-Trust assegura conformidade integral com a LGPD e privacidade nos dispositivos móveis.',
+    createdAt: '2026-11-04T05:30:00.000Z',
+    resolved: false,
+    replies: [],
+  },
+];
+
+const INITIAL_HIGHLIGHTS: DocumentHighlight[] = [
+  {
+    id: 'hl_1',
+    documentId: 'doc_spec_tecnica',
+    targetNodeId: 'node_p_2',
+    text: 'modelo Zero-Trust Local-First',
+    color: '#fef08a', // Yellow highlight
+    note: 'Requisito mandatório de segurança e integridade',
+    author: {
+      id: 'collab_beatriz',
+      name: 'Dra. Beatriz Lima',
+      color: '#059669',
+    },
+    createdAt: '2026-11-04T05:15:00.000Z',
+  },
+  {
+    id: 'hl_2',
+    documentId: 'doc_spec_tecnica',
+    targetNodeId: 'node_callout_1',
+    text: 'Árvore Sintática Abstrata (AST)',
+    color: '#bbf7d0', // Green highlight
+    note: 'Padrão estrutural aprovado',
+    author: {
+      id: 'collab_carlos',
+      name: 'Carlos Mendes',
+      color: '#d97706',
+    },
+    createdAt: '2026-11-04T05:20:00.000Z',
+  },
+];
+
 /* =========================================================================
    Storage Service Implementation
    ========================================================================= */
@@ -431,12 +560,28 @@ class StorageService {
       localStorage.setItem(STORAGE_KEYS.SYNC_QUEUE, JSON.stringify([]));
       localStorage.setItem(STORAGE_KEYS.ATTACHMENTS, JSON.stringify([]));
       localStorage.setItem(STORAGE_KEYS.VERSIONS, JSON.stringify([]));
+      localStorage.setItem(STORAGE_KEYS.COMMENTS, JSON.stringify(INITIAL_COMMENTS));
+      localStorage.setItem(STORAGE_KEYS.HIGHLIGHTS, JSON.stringify(INITIAL_HIGHLIGHTS));
+      localStorage.setItem(STORAGE_KEYS.COLLABORATORS, JSON.stringify(INITIAL_COLLABORATORS));
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_COLLABORATOR_ID, INITIAL_COLLABORATORS[0].id);
       localStorage.setItem(STORAGE_KEYS.TABS, JSON.stringify([
         { id: 'tab_doc_spec', type: 'document', itemId: 'doc_spec_tecnica', title: 'Especificação Técnica do Sistema', hasUnsavedChanges: false },
         { id: 'tab_note_visao', type: 'note', itemId: 'note_visao_geral', title: 'Visão Geral da Arquitetura Híbrida', hasUnsavedChanges: false },
       ]));
       localStorage.setItem(STORAGE_KEYS.ACTIVE_TAB_ID, 'tab_doc_spec');
       localStorage.setItem(STORAGE_KEYS.IS_OFFLINE_FORCED, 'false');
+    }
+
+    // Ensure comments and highlights keys exist even if already partially created
+    if (!localStorage.getItem(STORAGE_KEYS.COMMENTS)) {
+      localStorage.setItem(STORAGE_KEYS.COMMENTS, JSON.stringify(INITIAL_COMMENTS));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.HIGHLIGHTS)) {
+      localStorage.setItem(STORAGE_KEYS.HIGHLIGHTS, JSON.stringify(INITIAL_HIGHLIGHTS));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.COLLABORATORS)) {
+      localStorage.setItem(STORAGE_KEYS.COLLABORATORS, JSON.stringify(INITIAL_COLLABORATORS));
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_COLLABORATOR_ID, INITIAL_COLLABORATORS[0].id);
     }
   }
 
@@ -867,6 +1012,111 @@ class StorageService {
     localStorage.setItem(STORAGE_KEYS.ACTIVITIES, JSON.stringify(list.slice(0, 40)));
   }
 
+  // Comments
+  getComments(documentId?: string): DocumentComment[] {
+    try {
+      const all: DocumentComment[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.COMMENTS) || '[]');
+      if (documentId) {
+        return all.filter(c => c.documentId === documentId);
+      }
+      return all;
+    } catch {
+      return [];
+    }
+  }
+
+  saveComment(comment: DocumentComment): void {
+    const all = this.getComments();
+    const idx = all.findIndex(c => c.id === comment.id);
+    if (idx >= 0) {
+      all[idx] = comment;
+    } else {
+      all.unshift(comment);
+    }
+    localStorage.setItem(STORAGE_KEYS.COMMENTS, JSON.stringify(all));
+  }
+
+  resolveComment(commentId: string, resolvedBy: string): void {
+    const all = this.getComments();
+    const idx = all.findIndex(c => c.id === commentId);
+    if (idx >= 0) {
+      all[idx].resolved = !all[idx].resolved;
+      all[idx].resolvedAt = all[idx].resolved ? new Date().toISOString() : undefined;
+      all[idx].resolvedBy = all[idx].resolved ? resolvedBy : undefined;
+      localStorage.setItem(STORAGE_KEYS.COMMENTS, JSON.stringify(all));
+    }
+  }
+
+  deleteComment(commentId: string): void {
+    const all = this.getComments().filter(c => c.id !== commentId);
+    localStorage.setItem(STORAGE_KEYS.COMMENTS, JSON.stringify(all));
+  }
+
+  addCommentReply(commentId: string, reply: CommentReply): void {
+    const all = this.getComments();
+    const idx = all.findIndex(c => c.id === commentId);
+    if (idx >= 0) {
+      all[idx].replies.push(reply);
+      localStorage.setItem(STORAGE_KEYS.COMMENTS, JSON.stringify(all));
+    }
+  }
+
+  // Highlights
+  getHighlights(documentId?: string): DocumentHighlight[] {
+    try {
+      const all: DocumentHighlight[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.HIGHLIGHTS) || '[]');
+      if (documentId) {
+        return all.filter(h => h.documentId === documentId);
+      }
+      return all;
+    } catch {
+      return [];
+    }
+  }
+
+  saveHighlight(highlight: DocumentHighlight): void {
+    const all = this.getHighlights();
+    const idx = all.findIndex(h => h.id === highlight.id);
+    if (idx >= 0) {
+      all[idx] = highlight;
+    } else {
+      all.unshift(highlight);
+    }
+    localStorage.setItem(STORAGE_KEYS.HIGHLIGHTS, JSON.stringify(all));
+  }
+
+  deleteHighlight(highlightId: string): void {
+    const all = this.getHighlights().filter(h => h.id !== highlightId);
+    localStorage.setItem(STORAGE_KEYS.HIGHLIGHTS, JSON.stringify(all));
+  }
+
+  // Collaborators
+  getCollaborators(): Collaborator[] {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEYS.COLLABORATORS) || '[]');
+    } catch {
+      return INITIAL_COLLABORATORS;
+    }
+  }
+
+  saveCollaborators(collabs: Collaborator[]): void {
+    localStorage.setItem(STORAGE_KEYS.COLLABORATORS, JSON.stringify(collabs));
+  }
+
+  getActiveCollaboratorId(): string {
+    return localStorage.getItem(STORAGE_KEYS.ACTIVE_COLLABORATOR_ID) || INITIAL_COLLABORATORS[0].id;
+  }
+
+  setActiveCollaboratorId(id: string): void {
+    localStorage.setItem(STORAGE_KEYS.ACTIVE_COLLABORATOR_ID, id);
+  }
+
+  getActiveCollaborator(): Collaborator {
+    const collabs = this.getCollaborators();
+    const currentId = this.getActiveCollaboratorId();
+    return collabs.find(c => c.id === currentId) || collabs[0] || INITIAL_COLLABORATORS[0];
+  }
+
   // Reset to sample data
   resetDatabase(): void {
     localStorage.clear();
@@ -875,3 +1125,4 @@ class StorageService {
 }
 
 export const storage = new StorageService();
+

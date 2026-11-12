@@ -335,3 +335,71 @@ export interface ActivityLog {
   timestamp: string;
   description: string;
 }
+
+/* =========================================================================
+   Real-Time Multi-User Collaboration, Comments & Annotations
+   ========================================================================= */
+
+export type UserRole = 'owner' | 'editor' | 'commenter' | 'viewer';
+
+export interface Collaborator {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string;
+  color: string;
+  role: UserRole;
+  isCurrentUser?: boolean;
+  activeNodeId?: string;
+  cursorPosition?: { x: number; y: number };
+  lastActive: number | string;
+}
+
+export interface CommentReply {
+  id: string;
+  author: {
+    id: string;
+    name: string;
+    email: string;
+    avatar: string;
+    color: string;
+  };
+  content: string;
+  createdAt: string;
+}
+
+export interface DocumentComment {
+  id: string;
+  documentId: string;
+  targetNodeId?: string; // Node ID in Word AST or paragraph in Markdown
+  selectedText?: string; // Highlighted or quoted snippet that was commented on
+  author: {
+    id: string;
+    name: string;
+    email: string;
+    avatar: string;
+    color: string;
+  };
+  content: string;
+  createdAt: string;
+  resolved: boolean;
+  resolvedBy?: string;
+  resolvedAt?: string;
+  replies: CommentReply[];
+}
+
+export interface DocumentHighlight {
+  id: string;
+  documentId: string;
+  targetNodeId?: string;
+  text: string;
+  color: string; // e.g. '#fef08a' (yellow), '#bbf7d0' (green), '#bae6fd' (blue), '#fbcfe8' (pink), '#fed7aa' (orange)
+  note?: string;
+  author: {
+    id: string;
+    name: string;
+    color: string;
+  };
+  createdAt: string;
+}
+
